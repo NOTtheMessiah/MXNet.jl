@@ -126,6 +126,14 @@ function Inv(base_lr :: Real; gamma::Real=0.9, power::Real=0.5, decay_on_iterati
 end
 get_learning_rate(self :: Inv, state :: OptimizationState) =
   self.learning_rate * ( 1 + self.gamma * (self.on_iteration ? state.curr_iter : state.curr_epoch)) ^ (-self.power)
+
+type Factor <: AbstractLearningRateScheduler
+    step :: Int
+    factor :: Real
+    learning_rate :: Real
+end
+get_learning_rate(self :: Factor, state :: OptimizationState ) =
+    self.learning_rate * self.factor ^ ( state.curr_iter // self.step )
 end# module LearningRate
 ################################################################################
 function get_lr_scheduler(scheduler :: Any, lr :: Real)
