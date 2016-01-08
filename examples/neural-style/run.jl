@@ -70,34 +70,30 @@ function preprocessContentImage(path::AbstractString, longEdge::Int)
     new_size = map( x -> Int(floor(factor*x)) , img.data |> size)
     resized_img = Images.imresize(img, new_size)
     sample = separate(resized_img).data * 256
-    sample = permutedims(sample, [3, 2, 1])
     # sub mean
-    sample[1, :] -= 123.68 # mean(sample[1,:])
-    sample[2, :] -= 116.779 # mean(sample[2,:])
-    sample[3, :] -= 103.939 # mean(sample[3,:])
+    sample[:,:,1] -= 123.68
+    sample[:,:,2] -= 116.779
+    sample[:,:,3] -= 103.939
     println("resize the content image to $(new_size)")
-    return reshape(sample, (1, 3, size(sample)[2], size(sample)[3]))
+    return reshape(sample, (size(sample)[1], size(sample)[2], 3, 1))
 end
 
 
 function preprocessStyleImage(path::AbstractString, shape)
     img = load(path)
-    resized_img = Images.imresize(img, (shape[3], shape[4]))
+    resized_img = Images.imresize(img, (shape[2], shape[1]))
     sample = separate(resized_img).data * 256
-    sample = permutedims(sample, [3, 2, 1])
-
-    sample[1, :] -= 123.68 # mean(sample[1,:])
-    sample[2, :] -= 116.779 # mean(sample[2,:]) 
-    sample[3, :] -= 103.939 # mean(sample[3,:]) 
-    return reshape(sample, (1, 3, size(sample)[2], size(sample)[3]))
+    sample[:,:,1] -= 123.68
+    sample[:,:,2] -= 116.779
+    sample[:,:,3] -= 103.939
+    return reshape(sample, (size(sample)[1], size(sample)[2], 3, 1))
 end
 
 function postprocessImage(img)
-    img = reshape(img, (3, size(img)[3], size(img)[4]))
-    img[1, :] += 123.68 # mean(extrema(img[1,:]))+128
-    img[2, :] += 116.779 # mean(extrema(img[2,:]))+128
-    img[3, :] += 103.939 # mean(extrema(img[3,:]))+128
-    img = permutedims(img, [3, 2, 1])
+    img = reshape(img, (size(img)[1], size(img)[2], 3))
+    img[:,:,1] += 123.68
+    img[:,:,2] += 116.779
+    img[:,:,3] += 103.939
     img = clamp(img, 0, 255)
     return map(UInt8,(img |> floor))
 end
@@ -105,7 +101,7 @@ end
 function saveImage(img::Array{Float32,4}, filename::AbstractString)
     println("save output to $filename")
     println("dimensions are $(img|>size)")
-    out = postprocessImage(img|> x -> permutedims( x, collect(4:-1:1)))
+    out = postprocessImage(img)
     #out = denoise_tv_chambolle(out, weight=args.remove_noise, multichannel=True)
     save(filename, colorim(out))
 end
@@ -115,8 +111,8 @@ args["gpu"] |> println
 
 dev = args["gpu"] >= 0 ? mx.gpu(args["gpu"]) : mx.cpu()
 content_np = preprocessContentImage(args["content-image"], args["max-long-edge"])
-style_np = preprocessStyleImage(args["style-image"], content_np |> size)
-shape = size(content_np)[2:end]
+style_np = preprocessStyleImage(args["style-image"], content_np|> size)
+shape = size(content_np)[1:3]
 
 #model
 type SGExecutor
@@ -128,9 +124,9 @@ end
 function styleGramExecutor(input_shape, ctx)
     # symbol
     data = mx.Variable("conv")
-    rs_data = mx.Reshape(data=data, target_shape=(Int(prod(input_shape[1:2])),Int(input_shape[3]) )) # weird reverse array
+    rs_data = mx.Reshape(data=data, target_shape=(Int(prod(input_shape[1:2])),Int(input_shape[3]) ))
     weight = mx.Variable("weight")
-    rs_weight = mx.Reshape(data=weight, target_shape=(Int(prod(input_shape[1:2])),Int(input_shape[3]) )) # weird reverse array
+    rs_weight = mx.Reshape(data=weight, target_shape=(Int(prod(input_shape[1:2])),Int(input_shape[3]) ))
     fc = mx.FullyConnected(data=rs_data, weight=rs_weight, no_bias=true, num_hidden=input_shape[3])
     # executor
     conv = mx.zeros(input_shape, ctx)
@@ -149,8 +145,7 @@ gram_executor = [styleGramExecutor(arr |> size, dev) for arr in model_executor.s
 
 # get style representation
 style_array = [mx.zeros(gram.executor.outputs[1] |> size, dev) for gram in gram_executor]
-model_executor.data[:] = style_np |> x -> permutedims( x, collect(4:-1:1) )
-
+model_executor.data[:] = style_np
 mx.forward(model_executor.executor)
 
 for i in 1:length(model_executor.style)
@@ -162,12 +157,12 @@ end
 # get content representation
 content_array = mx.zeros(model_executor.content |> size, dev)
 content_grad  = mx.zeros(model_executor.content |> size, dev)
-model_executor.data[:] = content_np |> x -> permutedims( x, collect(4:-1:1) )
+model_executor.data[:] = content_np
 mx.forward(model_executor.executor)
 copy!(content_array,model_executor.content)
 
  # train
-img = mx.zeros(content_np |> size |> reverse, dev)
+img = mx.zeros(content_np |> size, dev)
 img[:] = mx.rand(-0.1, 0.1, img |> size)
 
 #= added to mx.LearningRate in optimizer.jl

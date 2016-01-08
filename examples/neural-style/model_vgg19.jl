@@ -48,9 +48,7 @@ function get_model(input_size, ctx)
     out = mx.Group(style, content)
 
     # make executor
-    #println("shape is $input_size")
-    arg_shapes, output_shapes, aux_shapes = mx.infer_shape(out, data=(input_size[3], input_size[2], 3, 1)) # data is backwords
-    #arg_shapes, output_shapes, aux_shapes = mx.infer_shape(out, data=(1,3,input_size[2], input_size[3]))
+    arg_shapes, output_shapes, aux_shapes = mx.infer_shape(out, data=(input_size[1], input_size[2], 3, 1))
     arg_names = mx.list_arguments(out)
     arg_dict = Dict(zip(arg_names, [mx.zeros(shape, ctx) for shape in arg_shapes]))
     grad_dict = Dict(zip(arg_names, [mx.zeros(shape, ctx) for shape in arg_shapes]))
