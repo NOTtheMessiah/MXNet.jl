@@ -2,7 +2,7 @@ using ArgParse
 using Images
 using MXNet
 
-parseCommandline() = begin
+parse_command_line() = begin
     s = ArgParseSettings(description = "Run Neural-Style on an immage")
     @add_arg_table s begin
         "--model", "-m"
@@ -61,9 +61,9 @@ parseCommandline() = begin
     parse_args(s)
 end
 
-args = parseCommandline()
+args = parse_command_line()
 
-function preprocessContentImage(path::AbstractString, longEdge::Int)
+function preprocess_content_image(path::AbstractString, longEdge::Int)
     img = load(path)
     println("load the content image, size = $(img.data |> size)")
     factor = (longEdge) / (img.data |> size |> x -> max(x...))
@@ -79,7 +79,7 @@ function preprocessContentImage(path::AbstractString, longEdge::Int)
 end
 
 
-function preprocessStyleImage(path::AbstractString, shape)
+function preprocess_style_image(path::AbstractString, shape)
     img = load(path)
     resized_img = Images.imresize(img, (shape[2], shape[1]))
     sample = separate(resized_img).data * 256
@@ -89,7 +89,7 @@ function preprocessStyleImage(path::AbstractString, shape)
     return reshape(sample, (size(sample)[1], size(sample)[2], 3, 1))
 end
 
-function postprocessImage(img)
+function postprocess_image(img)
     img = reshape(img, (size(img)[1], size(img)[2], 3))
     img[:,:,1] += 123.68
     img[:,:,2] += 116.779
@@ -98,10 +98,10 @@ function postprocessImage(img)
     return map(UInt8,(img |> floor))
 end
 
-function saveImage(img::Array{Float32,4}, filename::AbstractString)
+function save_image(img::Array{Float32,4}, filename::AbstractString)
     println("save output to $filename")
     println("dimensions are $(img|>size)")
-    out = postprocessImage(img)
+    out = postprocess_image(img)
     #out = denoise_tv_chambolle(out, weight=args.remove_noise, multichannel=True)
     save(filename, colorim(out))
 end
@@ -110,8 +110,8 @@ end
 args["gpu"] |> println
 
 dev = args["gpu"] >= 0 ? mx.gpu(args["gpu"]) : mx.cpu()
-content_np = preprocessContentImage(args["content-image"], args["max-long-edge"])
-style_np = preprocessStyleImage(args["style-image"], content_np|> size)
+content_np = preprocess_content_image(args["content-image"], args["max-long-edge"])
+style_np = preprocess_style_image(args["style-image"], content_np|> size)
 shape = size(content_np)[1:3]
 
 #model
@@ -121,7 +121,7 @@ type SGExecutor
     data_grad
 end
 
-function styleGramExecutor(input_shape, ctx)
+function style_gram_executor(input_shape, ctx)
     # symbol
     data = mx.Variable("conv")
     rs_data = mx.Reshape(data=data, target_shape=(Int(prod(input_shape[1:2])),Int(input_shape[3]) ))
@@ -141,7 +141,7 @@ end
 include("model_$(args["model"]).jl")
 
 model_executor = get_model(shape, dev)
-gram_executor = [styleGramExecutor(arr |> size, dev) for arr in model_executor.style]
+gram_executor = [style_gram_executor(arr |> size, dev) for arr in model_executor.style]
 
 # get style representation
 style_array = [mx.zeros(gram.executor.outputs[1] |> size, dev) for gram in gram_executor]
@@ -224,8 +224,8 @@ for epoch in 1:args["max-num-epochs"]
     end
 
     if (epoch+1) % args["save-epochs"] == 0
-        saveImage(new_img, "output/tmp_$(string(epoch+1)).jpg")
+        save_image(new_img, "output/tmp_$(string(epoch+1)).jpg")
     end
 end
 
-saveImage(new_img, args["output"])
+save_image(new_img, args["output"])
