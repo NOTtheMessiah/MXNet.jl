@@ -106,6 +106,9 @@ function save_image(img::Array{Float32,4}, filename::AbstractString)
     save(filename, colorim(out))
 end
 
+# assumes there's only one julia process using the GPU
+getmem() = pipeline(`nvidia-smi`,`grep julia`) |> readall |> split |> x->x[end-1]
+
 #input
 args["gpu"] |> println
 
@@ -216,10 +219,10 @@ for epoch in 1:args["max-num-epochs"]
     new_img = img |> copy
     eps = vecnorm(old_img - new_img) / vecnorm(new_img)
     old_img = new_img
-    println("epoch $epoch, relative change $eps")
+    println("epoch $epoch, GPU RAM $(getmem()), relative change $eps")
 
     if eps < args["stop-eps"]
-        println("eps < args.stop_eps, training finished")
+        println("eps < $(args["stop-eps"]), training finished")
         break
     end
 
