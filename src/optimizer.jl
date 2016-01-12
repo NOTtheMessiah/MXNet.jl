@@ -132,8 +132,19 @@ type Factor <: AbstractLearningRateScheduler
     factor :: Real
     learning_rate :: Real
 end
-get_learning_rate(self :: Factor, state :: OptimizationState ) =
-    self.learning_rate * self.factor ^ ( state.curr_iter // self.step )
+function Factor( step::Int, factor::Real=0.95, learning_rate=0.01)
+    @assert(1 <= step)
+    @assert(0 < factor < 1)
+    Factor(step, Float64(factor), Float64(learning_rate))
+end
+function get_learning_rate(self :: Factor, state :: OptimizationState )
+    state.curr_iter += 1
+    lr = self.learning_rate * self.factor ^ ( state.curr_iter // self.step )
+    if state.curr_iter % self.step == 0
+        println("updating learning rate to $lr")
+    end
+    lr
+end
 end# module LearningRate
 ################################################################################
 function get_lr_scheduler(scheduler :: Any, lr :: Real)

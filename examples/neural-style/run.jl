@@ -18,15 +18,15 @@ parse_command_line() = begin
             default="input/starry_night.jpg"
             help="the style image"
         "--stop-eps"
-            arg_type = Real
+            arg_type = Float64
             help="stop when the relative change is less than this"
             default=.005
         "--content-weight"
-            arg_type = Real
+            arg_type = Float64
             default=10
             help="the weight for the content image"
         "--style-weight"
-            arg_type = Real
+            arg_type = Float64
             default=1
             help="the weight for the style image"
         "--max-num-epochs"
@@ -38,7 +38,7 @@ parse_command_line() = begin
             default=600
             help="resize the content image"
         "--lr"
-            arg_type = Real
+            arg_type = Float64
             default=.1
             help="the initial learning rate"
         "--gpu"
@@ -54,7 +54,7 @@ parse_command_line() = begin
             default=50
             help="save the output every n epochs"
         "--remove-noise"
-            arg_type = Real
+            arg_type = Float64
             default=0.2
             help="the magnitude to remove noise (unimplemented)"
     end
@@ -193,6 +193,7 @@ optimizer.state = mx.OptimizationState(10)
 
 println("start training arguments $args")
 old_img = img |> copy
+new_img = old_img
 
 for epoch in 1:args["max-num-epochs"]
     copy!(model_executor.data,img  )
@@ -203,12 +204,13 @@ for epoch in 1:args["max-num-epochs"]
         copy!(gram_executor[i].data,model_executor.style[i])
         mx.forward(gram_executor[i].executor)
         mx.backward(gram_executor[i].executor,[gram_executor[i].executor.outputs[1] - style_array[i]])
-        gram_executor[i].data_grad[:] /= (size(gram_executor[i].data)[3] ^2) * (prod(size(gram_executor[i].data)[1:2]))
-        gram_executor[i].data_grad[:] *= args["style-weight"]
+        mx.div_from!(gram_executor[i].data_grad, (size(gram_executor[i].data)[3] ^2) * (prod(size(gram_executor[i].data)[1:2])))
+        mx.mul_to!(gram_executor[i].data_grad, args["style-weight"])
     end
 
     # content gradient
-    content_grad[:] = (model_executor.content - content_array) * args["content-weight"]
+    mec = model_executor.content |> copy
+    @mx.nd_as_jl ro=content_array rw=content_grad begin content_grad[:] = (mec - content_array) * args["content-weight"] end
 
     # image gradient
     grad_array = append!([gram_executor[i].data_grad::mx.NDArray for i in 1:length(gram_executor)] , [content_grad::mx.NDArray])
@@ -219,7 +221,7 @@ for epoch in 1:args["max-num-epochs"]
     new_img = img |> copy
     eps = vecnorm(old_img - new_img) / vecnorm(new_img)
     old_img = new_img
-    println("epoch $epoch, GPU RAM $(getmem()), relative change $eps")
+    println("epoch $epoch, $(args["gpu"] >= 0 ? "GPU RAM $(getmem()), ": "")relative change $eps")
 
     if eps < args["stop-eps"]
         println("eps < $(args["stop-eps"]), training finished")

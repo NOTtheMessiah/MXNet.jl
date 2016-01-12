@@ -1,11 +1,11 @@
 using MXNet
 
 type ConvExecutor
-    executor
-    data
-    data_grad
-    style
-    content
+    executor :: mx.Executor
+    data :: mx.NDArray
+    data_grad :: mx.NDArray
+    style :: Array{mx.NDArray,1}
+    content :: mx.NDArray
 end
 
 function get_model(input_size, ctx)
